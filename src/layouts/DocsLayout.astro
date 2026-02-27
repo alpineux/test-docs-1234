@@ -1,0 +1,93 @@
+---
+import "../styles/global.css";
+import Sidebar from "../components/Sidebar.astro";
+import Search from "../components/Search.astro";
+import ThemeToggle from "../components/ThemeToggle.astro";
+import config from "../../projectspace.config";
+
+interface Props {
+    title: string;
+    description?: string;
+    currentSlug: string;
+}
+
+const { title, description, currentSlug } = Astro.props;
+const defaultTheme = config.theme.default;
+---
+
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="icon" href="/favicon.ico" />
+        <meta name="viewport" content="width=device-width" />
+        <meta name="generator" content={Astro.generator} />
+        <title>{title} — {config.site.title}</title>
+        <script is:inline define:vars={{ defaultTheme }}>
+            (function () {
+                var t = localStorage.getItem("theme");
+                if (!t) {
+                    t =
+                        defaultTheme === "system"
+                            ? matchMedia("(prefers-color-scheme:dark)").matches
+                                ? "dark"
+                                : "light"
+                            : defaultTheme;
+                }
+                document.documentElement.setAttribute("data-theme", t);
+            })();
+        </script>
+        {description && <meta name="description" content={description} />}
+    </head>
+    <body>
+        <header class="site-header">
+            <button class="menu-toggle" aria-label="Toggle menu">
+                <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                >
+                    <line x1="3" y1="5" x2="17" y2="5"></line>
+                    <line x1="3" y1="10" x2="17" y2="10"></line>
+                    <line x1="3" y1="15" x2="17" y2="15"></line>
+                </svg>
+            </button>
+            <a href="/" class="logo">{config.site.title}</a>
+            <Search />
+            <ThemeToggle defaultTheme={config.theme.default} />
+        </header>
+
+        <div class="docs-layout">
+            <div class="sidebar-overlay"></div>
+            <Sidebar currentSlug={currentSlug} />
+            <main class="docs-content">
+                <article class="prose">
+                    <h1>{title}</h1>
+                    {description && <p class="description">{description}</p>}
+                    <slot />
+                </article>
+            </main>
+        </div>
+
+        <script>
+            const toggle = document.querySelector(".menu-toggle");
+            const sidebar = document.querySelector(".sidebar");
+            const overlay = document.querySelector(".sidebar-overlay");
+
+            function closeSidebar() {
+                sidebar?.classList.remove("open");
+                overlay?.classList.remove("open");
+            }
+
+            toggle?.addEventListener("click", () => {
+                sidebar?.classList.toggle("open");
+                overlay?.classList.toggle("open");
+            });
+
+            overlay?.addEventListener("click", closeSidebar);
+        </script>
+    </body>
+</html>

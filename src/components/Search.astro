@@ -1,0 +1,172 @@
+---
+---
+
+<div class="search-wrapper">
+  <div class="search-input-wrapper">
+    <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+      <circle cx="6.5" cy="6.5" r="5" />
+      <line x1="10" y1="10" x2="14.5" y2="14.5" />
+    </svg>
+    <input
+      type="text"
+      class="search-input"
+      placeholder="Search docs..."
+      aria-label="Search documentation"
+    />
+    <kbd class="search-shortcut">/</kbd>
+  </div>
+  <div class="search-results" hidden>
+    <ul class="search-results-list"></ul>
+    <p class="search-empty" hidden>No results found.</p>
+  </div>
+</div>
+
+<script>
+  interface SearchEntry {
+    slug: string;
+    title: string;
+    description: string;
+    section: string;
+    body: string;
+  }
+
+  let index: SearchEntry[] | null = null;
+
+  const input = document.querySelector<HTMLInputElement>(".search-input")!;
+  const resultsContainer = document.querySelector<HTMLDivElement>(".search-results")!;
+  const resultsList = document.querySelector<HTMLUListElement>(".search-results-list")!;
+  const emptyMessage = document.querySelector<HTMLParagraphElement>(".search-empty")!;
+
+  async function loadIndex(): Promise<SearchEntry[]> {
+    if (index) return index;
+    const res = await fetch("/search-index.json");
+    index = await res.json();
+    return index!;
+  }
+
+  function escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function getSnippet(text: string, query: string, contextLen = 60): string {
+    const lower = text.toLowerCase();
+    const pos = lower.indexOf(query.toLowerCase());
+    if (pos === -1) return text.slice(0, contextLen * 2) + "...";
+
+    const start = Math.max(0, pos - contextLen);
+    const end = Math.min(text.length, pos + query.length + contextLen);
+    let snippet = "";
+    if (start > 0) snippet += "...";
+    snippet += text.slice(start, end);
+    if (end < text.length) snippet += "...";
+    return snippet;
+  }
+
+  function highlightMatch(text: string, query: string): string {
+    if (!query) return text;
+    const regex = new RegExp(`(${escapeRegex(query)})`, "gi");
+    return text.replace(regex, "<mark>$1</mark>");
+  }
+
+  function formatSection(slug: string): string {
+    return slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  function search(query: string, entries: SearchEntry[]): SearchEntry[] {
+    const q = query.toLowerCase().trim();
+    if (!q) return [];
+
+    // Score each entry: title match > description match > body match
+    const scored = entries.map((entry) => {
+      let score = 0;
+      const title = entry.title.toLowerCase();
+      const desc = entry.description.toLowerCase();
+      const body = entry.body.toLowerCase();
+
+      if (title.includes(q)) score += 10;
+      if (desc.includes(q)) score += 5;
+      if (body.includes(q)) score += 1;
+
+      return { entry, score };
+    });
+
+    return scored
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((s) => s.entry);
+  }
+
+  function renderResults(results: SearchEntry[], query: string) {
+    resultsList.innerHTML = "";
+
+    if (results.length === 0) {
+      emptyMessage.hidden = false;
+      return;
+    }
+
+    emptyMessage.hidden = true;
+
+    for (const entry of results) {
+      const snippet = getSnippet(
+        entry.body || entry.description || "",
+        query,
+      );
+      const li = document.createElement("li");
+      li.innerHTML = `
+        <a href="/docs/${entry.slug}" class="search-result-link">
+          <span class="search-result-section">${formatSection(entry.section)}</span>
+          <span class="search-result-title">${highlightMatch(entry.title, query)}</span>
+          <span class="search-result-snippet">${highlightMatch(snippet, query)}</span>
+        </a>
+      `;
+      resultsList.appendChild(li);
+    }
+  }
+
+  let debounceTimer: ReturnType<typeof setTimeout>;
+
+  input.addEventListener("input", () => {
+    clearTimeout(debounceTimer);
+    const query = input.value.trim();
+
+    if (!query) {
+      resultsContainer.hidden = true;
+      resultsList.innerHTML = "";
+      return;
+    }
+
+    debounceTimer = setTimeout(async () => {
+      const entries = await loadIndex();
+      const results = search(query, entries);
+      resultsContainer.hidden = false;
+      renderResults(results, query);
+    }, 150);
+  });
+
+  // Close results when clicking outside
+  document.addEventListener("click", (e) => {
+    const target = e.target as HTMLElement;
+    if (!target.closest(".search-wrapper")) {
+      resultsContainer.hidden = true;
+    }
+  });
+
+  // Reopen on focus if there's a query
+  input.addEventListener("focus", () => {
+    if (input.value.trim()) {
+      resultsContainer.hidden = false;
+    }
+  });
+
+  // Keyboard shortcut: / to focus search
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "/" && document.activeElement !== input) {
+      e.preventDefault();
+      input.focus();
+    }
+    if (e.key === "Escape") {
+      input.blur();
+      resultsContainer.hidden = true;
+    }
+  });
+</script>

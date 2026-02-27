@@ -1,0 +1,61 @@
+---
+import { getCollection } from "astro:content";
+
+interface Props {
+  currentSlug: string;
+}
+
+const { currentSlug } = Astro.props;
+
+const allDocs = await getCollection("docs");
+
+// Group docs by section (derived from folder name or frontmatter)
+type DocEntry = (typeof allDocs)[number];
+const sections = new Map<string, DocEntry[]>();
+
+for (const doc of allDocs) {
+  // Use frontmatter section, or derive from the first path segment
+  const folder = doc.id.includes("/") ? doc.id.split("/")[0] : "";
+  const section = doc.data.section || folder || "General";
+  if (!sections.has(section)) sections.set(section, []);
+  sections.get(section)!.push(doc);
+}
+
+// Sort each section's entries by order, then alphabetically
+for (const [, entries] of sections) {
+  entries.sort((a, b) => a.data.order - b.data.order || a.data.title.localeCompare(b.data.title));
+}
+
+// Sort sections: "getting-started" first, then alphabetically
+const sortedSections = [...sections.entries()].sort(([a], [b]) => {
+  if (a === "getting-started") return -1;
+  if (b === "getting-started") return 1;
+  return a.localeCompare(b);
+});
+
+function formatSection(slug: string): string {
+  return slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+---
+
+<aside class="sidebar">
+  <nav>
+    {sortedSections.map(([section, entries]) => (
+      <div>
+        <p class="section-label">{formatSection(section)}</p>
+        <ul>
+          {entries.map((entry) => (
+            <li>
+              <a
+                href={`/docs/${entry.id}`}
+                aria-current={currentSlug === entry.id ? "page" : undefined}
+              >
+                {entry.data.title}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    ))}
+  </nav>
+</aside>
